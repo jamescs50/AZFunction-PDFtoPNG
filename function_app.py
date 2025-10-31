@@ -26,26 +26,46 @@ def PDF2PNG(req: func.HttpRequest) -> func.HttpResponse:
                 status_code=400
             )
 
+        #logging.info("about to start reading pdf")
         # Decode base64 PDF
         pdf_bytes = base64.b64decode(base64_pdf)
 
-        images = render_pdf_pages_to_pngs(pdf_bytes,300)  
+        #logging.info("about to start converting pdf")
+
+        try:
+            images = render_pdf_pages_to_pngs(pdf_bytes, dpi=300)
+        except Exception as e:
+            #logging.exception("Render error: %s", e)
+            return func.HttpResponse(
+                json.dumps({"error": f"Failed to render PDF: {str(e)}"}),
+                status_code=500,
+                mimetype="application/json"
+            )
+
 
         if not images:
             return func.HttpResponse("PDF contained no pages.", status_code=400)
 
-        zip_bytes = create_zip_in_memory(images)
+#        logging.info(images_dict)
+#        logging.info(json.dumps(images_dict))
 
-
-        zip_name = f"labels.zip"
-        
-        base64_zip = base64.b64encode(zip_bytes).decode("utf-8")
+        json_result = [
+            {
+                "page": idx + 1,
+                "filename": fname,
+                "image_base64": base64.b64encode(data).decode("utf-8"),
+            }
+            for idx, (fname, data) in enumerate(images)
+        ]
 
         return func.HttpResponse(
-            json.dumps({"base64zip": base64_zip}),
+            json.dumps(json_result,indent=2),
             mimetype="application/json",
             status_code=200
         )
+
+
+
 
     except Exception as e:
         return func.HttpResponse(
@@ -61,7 +81,7 @@ def render_pdf_pages_to_pngs(pdf_bytes: bytes, dpi: int = 300):
     Returns list of tuples: (filename, png_bytes)
     """
     if not pdf_bytes:
-        return []
+        return {}
 
     # Cap DPI to something reasonable to avoid enormous images
     max_dpi = 300
@@ -78,18 +98,5 @@ def render_pdf_pages_to_pngs(pdf_bytes: bytes, dpi: int = 300):
             pix = page.get_pixmap(matrix=mat, alpha=False)  # alpha False => RGB
             png_bytes = pix.tobytes("png")
             filename = f"page_{i+1:03d}.png"
-            imgs.append((filename, png_bytes))
+            imgs.append((filename,png_bytes))
     return imgs
-
-
-def create_zip_in_memory(files):
-    """
-    files: iterable of (filename, bytes)
-    returns bytes of zip file
-    """
-    buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-        for filename, filebytes in files:
-            zf.writestr(filename, filebytes)
-    buf.seek(0)
-    return buf.read()
