@@ -38,11 +38,14 @@ def PDF2PNG(req: func.HttpRequest) -> func.HttpResponse:
 
 
         zip_name = f"labels.zip"
-        headers = {
-            "Content-Type": "application/zip",
-            "Content-Disposition": f'attachment; filename="{zip_name}"'
-        }
-        return func.HttpResponse(body=zip_bytes, status_code=200, headers=headers)
+        
+        base64_zip = base64.b64encode(zip_bytes).decode("utf-8")
+
+        return func.HttpResponse(
+            json.dumps({"base64zip": base64_zip}),
+            mimetype="application/json",
+            status_code=200
+        )
 
     except Exception as e:
         return func.HttpResponse(
